@@ -272,9 +272,9 @@ def create_new_dp_vols(session, base_url, login_token, storage_cluster, dpv_conf
                                                         # not be added to a consistency group.
                                                         # In order to create a new one, specify "new"
         # "primary_serial_nr": "800001",             # Primary serial number for creating replications
-                                                        # (must belong to storage_cluster)
+                                                        #(must belong to storage_cluster)
         # "secondary_serial_nr": "800002",           # Secondary serial number for creating replications
-                                                        # (must belong to storage_cluster)
+                                                        #(must belong to storage_cluster)
         # "explicit_lun_start_nr": "1",              # 	Start nr for LUN-Mapping. Leave empty,
                                                         # to use the definition specified in the config template
         # "lun_label": "%h%l"                        # Schema for labeling LUNs. You can use the following parameters:
@@ -465,14 +465,12 @@ logger.info(f'login_token: {login_token}')
 #     print(cluster)
 
 
-
-
 # Get and print the details of one cluster id
-# cluster_details_example = get_details_of_a_cluster(session, base_url, login_token, 243)
+# cluster_details_example = get_details_of_a_cluster(session, base_url, login_token, 2)
 # logger.info(json.dumps(cluster_details_example, indent=4))
 
 # Get and print the mapping details of one cluster id
-# cluster_details_mapping_example = get_mapping_tables_of_a_cluster(session, base_url, login_token, 243)
+# cluster_details_mapping_example = get_mapping_tables_of_a_cluster(session, base_url, login_token, 2)
 # logger.info(json.dumps(cluster_details_mapping_example, indent=4))
 
 # Get and print the list of dp vol sizes
@@ -487,45 +485,62 @@ logger.info(f'login_token: {login_token}')
 # logger.info(json.dumps(all_dpv_config_templates_details, indent=4))
 # for dpv_tmpl in all_dpv_config_templates_details['dpv_config_templates']:
 #     print(dpv_tmpl)
-
+#
 # storage_clusters_list = get_storage_clusters(session, base_url, login_token)
 # logger.info(json.dumps(storage_clusters_list, indent=4))
 
+
+
 # Create LDEVs and allocate to a cluster
-# create_new_dp_vols(session, base_url, login_token, "2DC", 7, "10G", 1, "Harel_2026", "new")
-
-
-
+# create_new_dp_vols(session, base_url, login_token, "2DC", 1, "10G", 1, "cluster_1", "new") #--  !!!!!! stopped working by name
+# create_new_dp_vols(session, base_url, login_token, "3", 1, "11G", 1, "cluster_1", "new")
+#
 
 # List storage arrays
-# storage_arrays = list_arrays(session, base_url, login_token)
-# logger.info(json.dumps(storage_arrays, indent=4))
-# sn1_id = find_storage_array_id_by_serial_number(storage_arrays, 800001)
-# logger.info(f'800001: {sn1_id}')
-# sn2_id = find_storage_array_id_by_serial_number(storage_arrays, 800002)
-# logger.info(f'800002: {sn2_id}')
-
-
-# #List volumes
-# a_list_of_ldevs = listing_dp_vols(session, base_url, login_token, 6)
-# logger.info(json.dumps(a_list_of_ldevs, indent=4))
+storage_arrays = list_arrays(session, base_url, login_token)
+logger.info(json.dumps(storage_arrays, indent=4))
+sn1_id = find_storage_array_id_by_serial_number(storage_arrays, 800001)
+logger.info(f'800001: {sn1_id}')
+sn2_id = find_storage_array_id_by_serial_number(storage_arrays, 800002)
+logger.info(f'800002: {sn2_id}')
 #
-# api_dp_vol_id_of_an_ldev1 = find_ldev_id_in_api_dp_vols(a_list_of_ldevs, 0xad, sn1_id)
+#
+# #List volumes
+# a_list_of_ldevs = listing_dp_vols(session, base_url, login_token, 3)
+# logger.info(json.dumps(a_list_of_ldevs, indent=4))
+# #
+# api_dp_vol_id_of_an_ldev1 = find_ldev_id_in_api_dp_vols(a_list_of_ldevs, 0x9e, sn1_id)
 # logger.info(json.dumps(api_dp_vol_id_of_an_ldev1, indent=4))
-# api_dp_vol_id_of_an_ldev2 = find_ldev_id_in_api_dp_vols(a_list_of_ldevs, 0xad, sn2_id)
+# api_dp_vol_id_of_an_ldev2 = find_ldev_id_in_api_dp_vols(a_list_of_ldevs, 0x9e, sn2_id)
 # logger.info(json.dumps(api_dp_vol_id_of_an_ldev2, indent=4))
+
 # # Expand LDEV - use storage_cluster name not storage system id, use the IDs from api/dp_vols table
 # str_of_ldevs_to_expand =join_strings(api_dp_vol_id_of_an_ldev1, api_dp_vol_id_of_an_ldev2)
-# expand_dp_vols(session, base_url, login_token, "2DC", str_of_ldevs_to_expand, "additional_size", "10G")
+# expand_dp_vols(session, base_url, login_token, "3", str_of_ldevs_to_expand, "additional_size", "100G")
 #
 #
 
-# # List LUNs
-# list_of_luns = list_luns(session, base_url, login_token)
+# List LUNs
+list_of_luns = list_luns(session, base_url, login_token)
+# print(list_of_luns[1])
 # logger.info(json.dumps(list_of_luns, indent=4))
 
-# # Delete volumes, must use the LUN table to get the internal IDs
-# delete_dp_vols_job_status = delete_dp_vols(session, base_url, login_token, "lab4-vsp-one-800001", "20840", "true")
-# logger.info(json.dumps(delete_dp_vols_job_status, indent=4))
-# delete_dp_vols_job_status = delete_dp_vols(session, base_url, login_token, "lab4-vsp-one-800002", "20838", "true")
-# logger.info(json.dumps(delete_dp_vols_job_status, indent=4))
+@log_decorator
+def find_ldev_id_in_api_list_of_luns(api_list_luns, hex_dev_num, storage_array_id):
+    dec_dev_num = int(hex_dev_num)
+    for volume in api_list_luns:
+        if volume['dev_num'] == dec_dev_num and volume['storage_array_id'] == storage_array_id:
+            return volume['id']
+    return None
+
+ldev1_internal_id = find_ldev_id_in_api_list_of_luns(list_of_luns, 0x9B, sn1_id)
+ldev2_internal_id = find_ldev_id_in_api_list_of_luns(list_of_luns, 0x9B, sn2_id)
+
+print(ldev1_internal_id)
+print(ldev2_internal_id)
+
+# Delete volumes, must use the LUN table to get the internal IDs
+delete_dp_vols_job_status = delete_dp_vols(session, base_url, login_token, "vsp-one-800001", ldev1_internal_id, "true")
+logger.info(json.dumps(delete_dp_vols_job_status, indent=4))
+delete_dp_vols_job_status = delete_dp_vols(session, base_url, login_token, "vsp-one-800002", ldev2_internal_id, "true")
+logger.info(json.dumps(delete_dp_vols_job_status, indent=4))
