@@ -283,6 +283,22 @@ def mount_snapshot(base_url, login_token, api_cluster_id, snapshot_ids):
     if create_new_snapshot_response.status_code == 200:
         return create_new_snapshot_response.json()
 
+@log_decorator
+def unmount_snapshot(base_url, login_token, api_cluster_id, snapshot_ids):
+    snapshots_suffix = "snapshots/unmount"
+    snapshots_url = base_url + snapshots_suffix
+    logger.info("Using the following URL:" + snapshots_url)
+    headers = {
+        "Accept": "application/vnd.sam4h.v1+json",
+        "Authorization": login_token,
+        "Content-Type": "application/x-www-form-urlencoded"
+    }
+    params = {
+        "snapshot_ids": snapshot_ids, # Comma-separated string of integers (IDs of Snapshot)
+    }
+    create_new_snapshot_response = requests.post(snapshots_url, verify=False, headers=headers, params=params)
+    if create_new_snapshot_response.status_code == 200:
+        return create_new_snapshot_response.json()
 
 @log_decorator
 def list_luns(base_url, login_token):
@@ -450,6 +466,11 @@ logger.info(f'snap_list_str: {snap_list_str}')
 # Mount snapshots
 # mounted_snapshots = mount_snapshot(base_url, login_token, cluster_id, snap_list_str)
 # logger.info(json.dumps(mounted_snapshots, indent=4))
+
+# unmount snapshots
+# unmounted_snapshots = unmount_snapshot(base_url, login_token, cluster_id, snap_list_str)
+# logger.info(json.dumps(unmounted_snapshots, indent=4))
+
 
 # Delete snapshots
 deleted_snapshot = delete_snapshot(base_url, login_token, snap_list_str)
