@@ -8,6 +8,11 @@ import logging
 import functools
 import urllib3
 import json
+import random
+import string
+import base64
+import datetime
+import time
 
 # Suppress only the single InsecureRequestWarning from urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -47,6 +52,41 @@ def get_arguments():
         parser.exit("[-] Enter missing info.")
     return arguments
 
+
+def decode_jwt_parts_return_jwt_exp_unix_time(jwt):
+    jwt_exp_unix_time = None
+    parts = jwt.split('.')
+    if len(parts) != 3:
+        raise ValueError("Invalid JWT structure")
+
+    # Header
+    header_encoded = parts[0]
+    header_encoded += '=' * (4 - len(header_encoded) % 4)  # Add padding if needed
+    header_decoded = base64.b64decode(header_encoded).decode('utf-8')
+    header = json.loads(header_decoded)
+    logger.info("Decoded Header:")
+    logger.info(json.dumps(header, indent=4))
+
+    # Payload
+    payload_encoded = parts[1]
+    payload_encoded += '=' * (4 - len(payload_encoded) % 4)  # Add padding if needed
+    payload_decoded = base64.b64decode(payload_encoded).decode('utf-8')
+    payload = json.loads(payload_decoded)
+    logger.info("Decoded Payload:")
+    for key, value in payload.items():
+        # If 'exp' is present, decode it to human-readable time
+        if key == "exp":
+            jwt_exp_unix_time = value
+            expiration_time = datetime.datetime.fromtimestamp(value, tz=datetime.timezone.utc)
+            logger.info(f'{key}: {value} (Expiration Time: {expiration_time})')
+        else:
+            logger.info(f'{key}: {value}')
+
+    # Signature
+    logger.info(f'Signature (raw):, {parts[2]}')
+    return jwt_exp_unix_time
+
+
 @log_decorator
 def get_login_token(base_url, user, password):
     login_suffix = "auth/login"
@@ -60,10 +100,10 @@ def get_login_token(base_url, user, password):
         'password': password
     }
     encoded_data = urllib.parse.urlencode(data)
-    logger.info(encoded_data)
+    # logger.info(encoded_data)
     login_response = requests.post(login_url, verify=False, data=encoded_data, headers=headers)
     if login_response.status_code == 200:
-        logger.info(login_response.json())
+        # logger.info(login_response.json())
         login_data = login_response.json()
         token = login_data.get('auth_token')
         return token
@@ -71,11 +111,43 @@ def get_login_token(base_url, user, password):
         login_data = login_response.json()
         status = login_data.get('status')
         message = login_data.get('message')
-        logger.info(status + ": " + message)
+        # logger.info(status + ": " + message)
     else:
         raise Exception(f'Request failed with status code {login_response.status_code}')
 
-@log_decorator
+def save_token_to_file(token, file_path):
+    try:
+        with open(file_path, "w") as file:
+            file.write(token)
+        print(f"Token successfully saved to {file_path}")
+    except Exception as e:
+        print(f"An error occurred while saving the token: {e}")
+
+def load_token_from_file(file_path):
+    try:
+        with open(file_path, "r") as file:
+            token = file.read().strip()
+        return token
+    except FileNotFoundError:
+        logger.info(f'Token file {file_path} not found.')
+        return None
+    except Exception as e:
+        logger.info(f'An error occurred while reading the token: {e}')
+        return None
+
+def is_token_about_to_expire(unix_time_of_token_exp, threshold_seconds):
+    current_time = time.time()
+    time_to_expiry = unix_time_of_token_exp - current_time
+    logger.info(f'Current Unix Time: {int(current_time)}')
+    logger.info(f'Token Expiry Unix Time: {unix_time_of_token_exp}')
+    logger.info(f'Time to Expiry (seconds): {time_to_expiry}')
+    # Check if the token is about to expire within the threshold
+    return time_to_expiry < threshold_seconds
+
+
+
+
+
 def list_arrays(base_url, login_token):
     arrays_suffix = "storage_arrays"
     arrays_url = base_url + arrays_suffix
@@ -114,7 +186,7 @@ def find_storage_array_id_by_serial_number(api_storage_arrays_list, serial_numbe
             return storage['id']
     return None
 
-@log_decorator
+
 def listing_dp_vols(base_url, login_token, storage_cluster_id):
     list_dp_vols_suffix = "dp_vols"
     list_dp_vols_url = base_url + list_dp_vols_suffix
@@ -137,7 +209,7 @@ def listing_dp_vols(base_url, login_token, storage_cluster_id):
     if list_dp_vols_response.status_code == 200:
         return list_dp_vols_response.json()
 
-@log_decorator
+
 def get_storage_clusters(base_url, login_token):
     get_storage_clusters_suffix = "storage_clusters"
     get_storage_clusters_suffix_url = base_url + get_storage_clusters_suffix
@@ -153,14 +225,14 @@ def get_storage_clusters(base_url, login_token):
     else:
         raise Exception(f'Request failed with status code {get_storage_clusters_response.status_code}')
 
-@log_decorator
+
 def find_storage_cluster_id_by_name(api_storage_clusters, stg_clu_name):
     for storage_cluster in api_storage_clusters['data']:
         if storage_cluster['name'] == stg_clu_name:
             return storage_cluster['id']
     return None
 
-@log_decorator
+
 def find_ldev_id_in_api_dp_vols(api_dp_vols_json, hex_dev_num, storage_array_id):
     dec_dev_num = int(hex_dev_num)
     for volume in api_dp_vols_json['data']:
@@ -169,14 +241,14 @@ def find_ldev_id_in_api_dp_vols(api_dp_vols_json, hex_dev_num, storage_array_id)
             return volume.get("id")
     return None
 
-@log_decorator
+
 def find_cluster_id_by_name(api_clusters, cluster_name):
     for cluster in api_clusters:
         if cluster['name'] == cluster_name:
             return cluster['id']
     return None
 
-@log_decorator
+
 def create_new_snapshot(base_url, login_token, dp_vol_ids, snap_group_name):
     snapshots_suffix = "snapshots"
     snapshots_url = base_url + snapshots_suffix
@@ -190,15 +262,26 @@ def create_new_snapshot(base_url, login_token, dp_vol_ids, snap_group_name):
         "dp_vol_ids": dp_vol_ids, #	Comma-separated string of integers (IDs of the DpVol)
         "snap_group_name": snap_group_name, # Name of the Snapshot Group
     }
+    a_list_of_snapshots_before_adding_new = list_snapshots(base_url, login_token)
+    a_list_of_snapshots_before_adding_new_just_ids = []
+    for snapshot_id in a_list_of_snapshots_before_adding_new:
+        a_list_of_snapshots_before_adding_new_just_ids.append(snapshot_id['id'])
+
     create_new_snapshot_response = requests.post(snapshots_url, verify=False, headers=headers, params=params)
     if create_new_snapshot_response.status_code == 200:
-        return create_new_snapshot_response.json()
+        a_list_of_snapshots_after_adding_new = list_snapshots(base_url, login_token)
+        a_list_of_snapshots_after_adding_new_just_ids = []
+        for snapshot_id in a_list_of_snapshots_after_adding_new:
+            a_list_of_snapshots_after_adding_new_just_ids.append(snapshot_id['id'])
+        new_snapshots_created = [item for item in a_list_of_snapshots_after_adding_new_just_ids if item not in a_list_of_snapshots_before_adding_new_just_ids]
+        new_snapshots_created_str = ','.join(map(str, new_snapshots_created))
+        return new_snapshots_created_str
 
-@log_decorator
+
 def join_strings(*args):
     return ','.join(args)
 
-@log_decorator
+
 def list_snapshots(base_url, login_token):
     snapshots_suffix = "snapshots"
     arrays_url = base_url + snapshots_suffix
@@ -209,16 +292,19 @@ def list_snapshots(base_url, login_token):
     }
     params = {
         "page": 1, # Specify the page. Default pagination size is 100 entries (see parameter limit)
-        "limit": 1 # Page size for pagination (default=100)
+        "limit": 1, # Page size for pagination (default=100) ## must check not unique IDs when using 1
+        "sort_by": "id"
     }
     all_data = []
     while True:
         snaphots_response = requests.get(arrays_url, verify=False, headers=headers, params=params)
+        # print(f'current page: {params['page']}')
         if snaphots_response.status_code == 200:
             data = snaphots_response.json()
             if data['status'] == "success":
                 # Append the data from the current page to all_data
                 all_data.extend(data['data'])
+                # print(data)
                 # Update the current page
                 params['page'] += 1
                 # Check if there are more pages
@@ -231,7 +317,7 @@ def list_snapshots(base_url, login_token):
     return all_data
 
 
-@log_decorator
+
 def list_clusters(base_url, login_token):
     clusters_suffix = "clusters"
     clusters_url = base_url + clusters_suffix
@@ -265,7 +351,7 @@ def list_clusters(base_url, login_token):
 
 
 
-@log_decorator
+
 def mount_snapshot(base_url, login_token, api_cluster_id, snapshot_ids):
     snapshots_suffix = "snapshots/mount"
     snapshots_url = base_url + snapshots_suffix
@@ -283,7 +369,7 @@ def mount_snapshot(base_url, login_token, api_cluster_id, snapshot_ids):
     if create_new_snapshot_response.status_code == 200:
         return create_new_snapshot_response.json()
 
-@log_decorator
+
 def unmount_snapshot(base_url, login_token, api_cluster_id, snapshot_ids):
     snapshots_suffix = "snapshots/unmount"
     snapshots_url = base_url + snapshots_suffix
@@ -300,7 +386,7 @@ def unmount_snapshot(base_url, login_token, api_cluster_id, snapshot_ids):
     if create_new_snapshot_response.status_code == 200:
         return create_new_snapshot_response.json()
 
-@log_decorator
+
 def list_luns(base_url, login_token):
     luns_suffix = "luns"
     luns_url = base_url + luns_suffix
@@ -333,7 +419,7 @@ def list_luns(base_url, login_token):
     return all_data
 
 
-@log_decorator
+
 def delete_snapshot(base_url, login_token, snapshot_ids):
     snapshots_suffix = "snapshots"
     snapshots_url = base_url + snapshots_suffix
@@ -365,14 +451,21 @@ base_url = "https://" + sam4hserver + ":" + "443" + "/api/"
 logger.info("base_url = " + base_url)
 
 # Get and print the login token
-login_token = get_login_token(base_url, sam4huser, sam4hpassword)
-logger.info(f'login_token: {login_token}')
 
+login_token = load_token_from_file("jwt.json")
+
+
+logger.info(f'login_token: {login_token}')
+jwt_exp_unix_time = decode_jwt_parts_return_jwt_exp_unix_time(login_token)
+logger.info(f'jwt_exp_unix_time = {jwt_exp_unix_time}')
+if is_token_about_to_expire(jwt_exp_unix_time, 3600):
+    login_token = get_login_token(base_url, sam4huser, sam4hpassword)
+    save_token_to_file(login_token, "jwt.json")
 
 
 # List storage arrays
 storage_arrays = list_arrays(base_url, login_token)
-logger.info(json.dumps(storage_arrays, indent=4))
+# logger.info(json.dumps(storage_arrays, indent=4))
 
 # for internal API ID of a storage serial
 sn1_id = find_storage_array_id_by_serial_number(storage_arrays, 800001)
@@ -383,7 +476,7 @@ logger.info(f'800001: {sn1_id}')
 
 # list storage clusters
 storage_clusters_list = get_storage_clusters(base_url, login_token)
-logger.info(json.dumps(storage_clusters_list, indent=4))
+# logger.info(json.dumps(storage_clusters_list, indent=4))
 
 
 # Get storage cluster internal API ID
@@ -393,7 +486,7 @@ logger.info(f'Internal APi ID of {storage_cluster_name}: {storage_cluster_id}')
 
 #List volumes
 a_list_of_ldevs = listing_dp_vols(base_url, login_token, storage_cluster_id)
-logger.info(json.dumps(a_list_of_ldevs, indent=4))
+# logger.info(json.dumps(a_list_of_ldevs, indent=4))
 
 # Find LDEV in API DP VOLs
 hex_ldevs_list = [0x9a, 0x9c, 0x9d, 0x9e]
@@ -410,12 +503,16 @@ logger.info(f'Going to snap these: {ldevs_to_snap}')
 
 
 # # Create snapshots
-# snap_group_name = "my_fucking_snap"
-# snapshots_created = create_new_snapshot(base_url, login_token, ldevs_to_snap, snap_group_name)
+# for i in range(5):
+#     length = 10
+#     random_string = ''.join(random.choices(string.ascii_lowercase + string.digits, k=length))
+#     snap_group_name = "my_fucking_snapshot_" + random_string
+#     snapshots_created = create_new_snapshot(base_url, login_token, ldevs_to_snap, snap_group_name)
+#     logger.info(f'Snapshots created: {snapshots_created}')
 
 # Get and print the list of clusters
 clusters = list_clusters(base_url, login_token)
-logger.info(json.dumps(clusters, indent=4))
+# logger.info(json.dumps(clusters, indent=4))
 
 
 #Find cluster API id by name
@@ -427,7 +524,9 @@ logger.info(f'Cluster id of {cluster_name_to_find}: {cluster_id}')
 
 # List all snapshots
 a_list_of_snapshots = list_snapshots(base_url, login_token)
-logger.info(json.dumps(a_list_of_snapshots, indent=4))
+for s in a_list_of_snapshots:
+    logger.info(s)
+# logger.info(json.dumps(a_list_of_snapshots, indent=4))
 
 
 
@@ -436,7 +535,7 @@ logger.info(json.dumps(a_list_of_snapshots, indent=4))
 
 # List LUNs
 list_of_luns = list_luns(base_url, login_token)
-@log_decorator
+
 def find_ldev_id_in_api_list_of_luns(api_list_luns, hex_dev_num, storage_array_id):
     dec_dev_num = int(hex_dev_num)
     for volume in api_list_luns:
@@ -460,7 +559,7 @@ for snapshot in a_list_of_snapshots:
     if snapshot['primary_lun_id'] in api_luns_list and snapshot['storage_array_id'] == sn1_id:
         snap_list_str = join_strings(snap_list_str, str(snapshot['id']))
 snap_list_str = snap_list_str[1:]
-logger.info(f'snap_list_str: {snap_list_str}')
+# logger.info(f'snap_list_str: {snap_list_str}')
 
 
 # Mount snapshots
@@ -473,7 +572,21 @@ logger.info(f'snap_list_str: {snap_list_str}')
 
 
 # Delete snapshots
-deleted_snapshot = delete_snapshot(base_url, login_token, snap_list_str)
-logger.info(json.dumps(deleted_snapshot, indent=4))
+# deleted_snapshot = delete_snapshot(base_url, login_token, snap_list_str)
+# deleted_snapshot = delete_snapshot(base_url, login_token, "211,212,213,214")
+# logger.info(json.dumps(deleted_snapshot, indent=4))
 
+# Delete snapshots of a storage system
+a_list_of_snapshots = list_snapshots(base_url, login_token)
+logger.info(json.dumps(a_list_of_snapshots, indent=4))
+
+all_snapshots_of_a_storage_system = []
+
+for snapshot in a_list_of_snapshots:
+    if snapshot['storage_array_id'] == sn1_id:
+        all_snapshots_of_a_storage_system.append(snapshot['id'])
+all_snapshots_of_a_storage_system_unique = list(set(all_snapshots_of_a_storage_system))
+all_snapshots_of_a_storage_system_unique_str = ','.join(map(str, all_snapshots_of_a_storage_system_unique))
+logger.info(f'Going to delete these snaphots: {all_snapshots_of_a_storage_system_unique_str}')
+deleted_snapshot = delete_snapshot(base_url, login_token, all_snapshots_of_a_storage_system_unique_str)
 
